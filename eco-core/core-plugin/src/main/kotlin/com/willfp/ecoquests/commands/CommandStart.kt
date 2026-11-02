@@ -4,6 +4,7 @@ import com.willfp.eco.core.command.impl.PluginCommand
 import com.willfp.eco.util.StringUtils
 import com.willfp.ecoquests.plugin
 import com.willfp.ecoquests.quests.Quests
+import com.willfp.ecoquests.runOwned
 import org.bukkit.command.CommandSender
 import org.bukkit.util.StringUtil
 
@@ -17,18 +18,25 @@ object CommandStart : PluginCommand(
         val player = notifyPlayerRequired(args.getOrNull(0), "invalid-player")
         val quest = notifyNull(Quests[args.getOrNull(1)], "invalid-quest")
 
-        if (quest.hasStarted(player) || quest.hasCompleted(player)) {
+        if (quest.hasCompleted(player)) {
+            sender.sendMessage(plugin.langYml.getMessage("cannot-start-completed"))
+            return
+        }
+
+        if (quest.hasStarted(player)) {
             sender.sendMessage(plugin.langYml.getMessage("already-started"))
             return
         }
 
-        quest.start(player)
+        player.runOwned {
+            quest.start(player)
 
-        sender.sendMessage(
-            plugin.langYml.getMessage("started-quest", StringUtils.FormatOption.WITHOUT_PLACEHOLDERS)
-                .replace("%quest%", quest.name)
-                .replace("%player%", player.name)
-        )
+            sender.sendMessage(
+                plugin.langYml.getMessage("started-quest", StringUtils.FormatOption.WITHOUT_PLACEHOLDERS)
+                    .replace("%quest%", quest.name)
+                    .replace("%player%", player.name)
+            )
+        }
     }
 
     override fun tabComplete(sender: CommandSender, args: List<String>): List<String> {

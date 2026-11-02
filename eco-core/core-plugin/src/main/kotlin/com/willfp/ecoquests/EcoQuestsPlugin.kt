@@ -2,6 +2,7 @@ package com.willfp.ecoquests
 
 import com.willfp.eco.core.bstats.EcoMetricsChart
 import com.willfp.eco.core.command.impl.PluginCommand
+import com.willfp.eco.core.integrations.IntegrationLoader
 import com.willfp.eco.core.placeholder.PlayerPlaceholder
 import com.willfp.eco.core.placeholder.PlayerlessPlaceholder
 import com.willfp.eco.util.toNiceString
@@ -10,6 +11,7 @@ import com.willfp.ecoquests.commands.CommandEcoQuests
 import com.willfp.ecoquests.commands.CommandQuests
 import com.willfp.ecoquests.gui.PreviousQuestsGUI
 import com.willfp.ecoquests.gui.QuestsGUI
+import com.willfp.ecoquests.integrations.LuckPermsIntegration
 import com.willfp.ecoquests.libreforge.ConditionHasCompletedCategory
 import com.willfp.ecoquests.libreforge.ConditionHasCompletedQuest
 import com.willfp.ecoquests.libreforge.ConditionHasCompletedTask
@@ -26,6 +28,7 @@ import com.willfp.ecoquests.libreforge.TriggerCompleteQuest
 import com.willfp.ecoquests.libreforge.TriggerCompleteTask
 import com.willfp.ecoquests.libreforge.TriggerGainTaskXp
 import com.willfp.ecoquests.libreforge.TriggerStartQuest
+import com.willfp.ecoquests.quests.MaxActiveQuests
 import com.willfp.ecoquests.quests.QuestCompleteDisplay
 import com.willfp.ecoquests.quests.QuestStartDisplay
 import com.willfp.ecoquests.quests.Quests
@@ -37,6 +40,7 @@ import com.willfp.libreforge.loader.LibreforgePlugin
 import com.willfp.libreforge.loader.configs.ConfigCategory
 import com.willfp.libreforge.triggers.Triggers
 import org.bukkit.Bukkit
+import org.bukkit.entity.Player
 import org.bukkit.event.Listener
 
 internal lateinit var plugin: EcoQuestsPlugin
@@ -73,10 +77,10 @@ class EcoQuestsPlugin : LibreforgePlugin() {
             Quests.getCompletedQuests(it).size.toString()
         }.register()
 
-        PlayerPlaceholder(this, "quests_percent_completed") {
-            val completed = Quests.getCompletedQuests(it).size
+        PlayerPlaceholder(this, "quests_percent_completed") { player ->
+            val completed = Quests.getCompletedQuests(player).size
             val total = Quests.values().size
-            val percent = completed.toDouble() / total.toDouble() * 100.0
+            val percent = if (total == 0) 0.0 else completed.toDouble() / total.toDouble() * 100.0
             percent.toNiceString()
         }.register()
 
@@ -92,8 +96,9 @@ class EcoQuestsPlugin : LibreforgePlugin() {
             Quests.values().count { quest -> quest.isResettable && quest.hasCompleted(player) }.toString()
         }.register()
 
-        PlayerPlaceholder(this, "recent_quest_name") {
-            Quests.getActiveQuests(it).minBy { quest -> quest.getTimeSinceStart(it) }.name
+        PlayerPlaceholder(this, "recent_quest_name") { player ->
+            Quests.getActiveQuests(player).minByOrNull { quest -> quest.getTimeSinceStart(player) }?.name
+                ?: langYml.getString("no-recent-quest")
         }.register()
     }
 
@@ -103,25 +108,31 @@ class EcoQuestsPlugin : LibreforgePlugin() {
     }
 
     override fun createTasks() {
-        val scanInterval = this.configYml.getInt("scan-interval").toLong()
-        this.scheduler.runTimer(scanInterval, scanInterval) {
+        val scanInterval = this.configYml.getInt("scan-interval").toLong().coerceAtLeast(1)
+        this.scheduler.global().runTimer(scanInterval, scanInterval) {
             for (player in Bukkit.getOnlinePlayers()) {
-                val max = Quests.getMaxActiveQuests(player)
-                if (max == 0) continue
-                var active = if (max == -1) 0 else Quests.getActiveQuests(player).size
-                for (quest in Quests.values()) {
-                    if (max != -1 && active >= max) break
-                    if (quest.shouldStart(player)) {
-                        quest.start(player)
-                        if (max != -1) active++
-                    }
-                }
+                player.runOwned { autoStartQuests(player) }
             }
         }
 
-        this.scheduler.runTimer(20, 20) {
+        this.scheduler.global().runTimer(20, 20) {
             for (quest in Quests.values()) {
                 quest.resetIfNeeded()
+            }
+        }
+    }
+
+    private fun autoStartQuests(player: Player) {
+        if (!player.isOnline) return
+
+        val max = Quests.getMaxActiveQuests(player)
+        if (max == 0) return
+        var active = if (max == -1) 0 else Quests.getActiveQuests(player).size
+        for (quest in Quests.values()) {
+            if (max != -1 && active >= max) break
+            if (quest.shouldStart(player)) {
+                quest.start(player)
+                if (max != -1) active++
             }
         }
     }
@@ -129,7 +140,14 @@ class EcoQuestsPlugin : LibreforgePlugin() {
     override fun loadListeners(): List<Listener> {
         return listOf(
             QuestCompleteDisplay,
-            QuestStartDisplay
+            QuestStartDisplay,
+            MaxActiveQuests
+        )
+    }
+
+    override fun loadIntegrationLoaders(): List<IntegrationLoader> {
+        return listOf(
+            IntegrationLoader("LuckPerms") { LuckPermsIntegration.load() }
         )
     }
 

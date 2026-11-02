@@ -16,6 +16,9 @@ Changing `use-local-storage` switches where player data is stored. Restart the s
 # to save to local storage to disable cross-server sync.
 use-local-storage: false
 
+# Worlds that EcoQuests should be disabled in
+disabled-in-worlds: []
+
 scan-interval: 20 # How often to scan for quests auto-starting (in ticks)
 
 # The default maximum number of active quests a player can have at once.
@@ -61,6 +64,7 @@ gui:
     location: # Slot for this icon (1-indexed)
       row: 1
       column: 5
+    locations: [ ] # Optional list of row/column slots; if set, the button shows in each of them instead of row/column
 
   quest-area: # Rectangle of slots that quest icons fill
     top-left:
@@ -76,6 +80,7 @@ gui:
     location:
       row: 6
       column: 4
+    locations: [ ] # Optional list of row/column slots; if set, the button shows in each of them instead of row/column
 
   next-page: # Next-page button
     item: arrow name:"&fNext Page"
@@ -83,6 +88,7 @@ gui:
     location:
       row: 6
       column: 6
+    locations: [ ] # Optional list of row/column slots; if set, the button shows in each of them instead of row/column
 
   page-change-sound:
     enabled: true
@@ -96,6 +102,7 @@ gui:
     location:
       row: 6
       column: 5
+    locations: [ ] # Optional list of row/column slots; if set, the button shows in each of them instead of row/column
 
   # Custom GUI slots; see here for a how-to: https://hub.auxilor.io/wiki/eco/pages
   custom-slots: [ ]
@@ -132,6 +139,7 @@ completed-gui: # The GUI listing quests the player has finished
     location:
       row: 6
       column: 4
+    locations: [ ] # Optional list of row/column slots; if set, the button shows in each of them instead of row/column
 
   next-page: # Next-page button
     item: arrow name:"&fNext Page"
@@ -139,6 +147,7 @@ completed-gui: # The GUI listing quests the player has finished
     location:
       row: 6
       column: 6
+    locations: [ ] # Optional list of row/column slots; if set, the button shows in each of them instead of row/column
 
   page-change-sound:
     enabled: true
@@ -151,6 +160,7 @@ completed-gui: # The GUI listing quests the player has finished
     location:
       row: 6
       column: 1
+    locations: [ ] # Optional list of row/column slots; if set, the button shows in each of them instead of row/column
 
   # Custom GUI slots; see here for a how-to: https://hub.auxilor.io/wiki/eco/pages
   custom-slots: [ ]

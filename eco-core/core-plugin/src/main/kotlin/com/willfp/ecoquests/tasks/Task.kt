@@ -12,13 +12,25 @@ import com.willfp.ecoquests.api.event.PlayerTaskCompleteEvent
 import com.willfp.ecoquests.api.event.PlayerTaskExpGainEvent
 import com.willfp.ecoquests.plugin
 import com.willfp.ecoquests.quests.Quest
-import com.willfp.ecoquests.quests.Quests
 import com.willfp.libreforge.counters.Accumulator
 import com.willfp.libreforge.toDispatcher
 import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
 import org.bukkit.entity.Player
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
+
+private val warnedInvalidRequirements = ConcurrentHashMap.newKeySet<String>()
+
+private fun warnInvalidRequirement(questId: String, taskId: String, requirement: Double) {
+    if (!warnedInvalidRequirements.add("$questId:$taskId")) {
+        return
+    }
+
+    plugin.logger.warning(
+        "Task $taskId in quest $questId requires $requirement XP, which is not above 0; using 1 instead"
+    )
+}
 
 class Task(
     val template: TaskTemplate,
@@ -53,7 +65,7 @@ class Task(
 
     private val accumulator = object : Accumulator {
         override fun accept(player: Player, count: Double) {
-            if (!quest.hasActive(player)) {
+            if (!quest.hasActive(player) || plugin.isDisabledIn(player.world)) {
                 return
             }
 
@@ -119,8 +131,8 @@ class Task(
             val newRequired = generateExperienceRequired(player)
 
             if (newRequired <= 0) {
-                throw IllegalStateException("Invalid XP Required for task ${template.id} in quest ${quest.id}" +
-                        "(Requirement was $newRequired, which is less than or equal to 0)")
+                warnInvalidRequirement(questId = quest.id, taskId = template.id, requirement = newRequired)
+                return 1.0
             }
 
             player.profile.write(xpRequiredKey, newRequired)
@@ -170,10 +182,7 @@ class Task(
 
             Bukkit.getPluginManager().callEvent(PlayerTaskCompleteEvent(player, template, quest))
 
-            // Then check if any quests are now completed
-            for (quest in Quests.values()) {
-                quest.checkCompletion(player)
-            }
+            quest.checkCompletion(player)
         }
     }
 

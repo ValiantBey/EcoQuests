@@ -188,21 +188,16 @@ class Quest(
     )
 
     // The tasks that are actually in use
+    @Volatile
     var tasks = run {
         if (taskAmount == availableTasks.size) {
             // If taskAmount is equal to availableTasks.size then tasks are ordered as configured
-            if (isResettable) {
-                availableTasks.take(taskAmount)
-            } else {
-                availableTasks.shuffled().take(taskAmount)
-            }
+            availableTasks.take(taskAmount)
         } else {
-            // If taskAmount is less than availableTasks.size then tasks are selected and ordered randomly.
-            if (isResettable) {
-                loadTasks() ?: availableTasks.randomlyPick(taskAmount)
-            } else {
-                availableTasks.randomlyPick(taskAmount)
-            }
+            // If taskAmount is less than availableTasks.size then tasks are selected and ordered randomly,
+            // and the selection is kept until the quest resets.
+            loadTasks()?.takeIf { isResettable || it.isInPool() }
+                ?: availableTasks.randomlyPick(taskAmount).also { saveTasks(it) }
         }
     }
         private set
@@ -292,11 +287,11 @@ class Quest(
         }.register()
 
         PlayerPlaceholder(plugin, "quest_${id}_time_since_start") {
-            formatDuration(this.getTimeSinceStart(it))
+            if (hasStarted(it)) formatDuration(this.getTimeSinceStart(it)) else ""
         }.register()
 
         PlayerPlaceholder(plugin, "quest_${id}_time_since_completed") {
-            formatDuration(this.getTimeSinceCompletion(it))
+            if (hasCompleted(it)) formatDuration(this.getTimeSinceCompletion(it)) else ""
         }.register()
 
         PlayerPlaceholder(plugin, "quest_${id}_time_since") {
@@ -314,7 +309,7 @@ class Quest(
             }
         }.register()
 
-        for (i in 1..this.tasks.size+1) {
+        for (i in 1..this.tasks.size) {
             PlayerPlaceholder(plugin, "quest_${id}_task_${i}_required_xp") {
                 this.tasks[i-1].getExperienceRequired(it).toNiceString()
             }.register()
@@ -344,9 +339,7 @@ class Quest(
     }
 
     override fun onRemove() {
-        if (isResettable) {
-            saveTasks()
-        }
+        saveTasks()
 
         for (task in tasks) {
             task.unbind()
@@ -380,9 +373,8 @@ class Quest(
         return startConditions.areMet(player.toDispatcher(), EmptyProvidedHolder)
     }
 
-    fun shouldStart(player: Player): Boolean {
-        return meetsStartConditions(player) && !hasStarted(player) && autoStarts
-    }
+    fun shouldStart(player: Player): Boolean =
+        autoStarts && !hasStarted(player) && meetsStartConditions(player)
 
     fun hasStarted(player: OfflinePlayer): Boolean {
         return player.profile.read(hasStartedKey)
@@ -440,7 +432,7 @@ class Quest(
     }
 
     fun start(player: Player) {
-        if (hasStarted(player)) {
+        if (hasStarted(player) || hasCompleted(player)) {
             return
         }
 
@@ -532,7 +524,11 @@ class Quest(
         val savedTasks = mutableListOf<Task>()
 
         for (s in serialized) {
-            val split = s.split(":")
+            val split = s.split(":", limit = 2)
+            if (split.size != 2) {
+                plugin.logger.warning("Quest $id has a malformed saved task '$s', skipping it.")
+                continue
+            }
             val taskId = split[0]
             val xpExpr = split[1]
 
@@ -544,7 +540,13 @@ class Quest(
         return savedTasks
     }
 
-    private fun saveTasks() {
+    private fun List<Task>.isInPool(): Boolean {
+        return size == taskAmount && all { task ->
+            availableTasks.any { it.template == task.template && it.xpExpr == task.xpExpr }
+        }
+    }
+
+    private fun saveTasks(tasks: List<Task> = this.tasks) {
         val serialized = tasks.map {
             "${it.template.id}:${it.xpExpr}"
         }
